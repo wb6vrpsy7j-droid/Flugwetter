@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Flugwetter">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icon-512.png">
+<link rel="manifest" href="manifest.webmanifest">
+<title>Flugwetter</title>
+<style>
+:root{color-scheme:light dark;--fl:"Calibri Light",Calibri,-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI Light","Segoe UI",system-ui,sans-serif;--bg:#e9eff3;--paper:#fbfcfc;--ink:#0e2a3b;--mute:#586d7a;--rule:#c5d2da;--blue:#1456c8;--warn:#f2b705;--err:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1a24;--paper:#12252f;--ink:#e6eef3;--mute:#93a8b4;--rule:#26404e;--blue:#6a9bff;--err:#ff8a80}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 17px/1.5 Calibri,-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;padding:max(24px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(48px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+main{max-width:860px;margin:0 auto}
+h1{font-family:var(--fl);font-weight:300;font-size:2rem;line-height:1.15;margin:0 0 4px}
+h2{font-size:1.15rem;font-weight:500;margin:0}
+.sub,.note,small{color:var(--mute)}
+.sub{margin:0 0 20px}
+form{background:var(--paper);border:1px solid var(--rule);border-left:6px solid var(--blue);padding:16px;display:grid;grid-template-columns:2fr 1fr;gap:12px;align-items:end}
+label{display:flex;flex-direction:column;font-size:.85rem;color:var(--mute);gap:4px}
+input,textarea{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--rule);padding:8px;border-radius:2px;width:100%;min-width:0;min-height:44px;-webkit-appearance:none;appearance:none}
+textarea{resize:vertical}
+input:focus-visible,textarea:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--warn);outline-offset:1px}
+button{font:inherit;font-weight:500;border:0;padding:10px 20px;min-height:44px;border-radius:2px;cursor:pointer;background:var(--blue);color:#fff;touch-action:manipulation}
+button:disabled{opacity:.55;cursor:wait}
+form button{grid-column:1/-1}
+details{margin:12px 0;background:var(--paper);border:1px solid var(--rule);padding:10px 16px}
+summary{cursor:pointer;min-height:32px}
+details p{margin:8px 0}
+#status{margin:16px 0;min-height:1.5em}
+#status.err{color:var(--err)}
+.box,article{background:var(--paper);border:1px solid var(--rule);padding:14px 16px;margin:0 0 12px}
+.box{border-left:6px solid var(--warn)}
+.box ul{margin:6px 0 0;padding-left:20px}
+article header{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:6px}
+.flags{margin:0 0 8px;font-weight:500}
+dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0}
+dt{color:var(--mute)}
+dd{margin:0;font-variant-numeric:tabular-nums}
+h3{font-size:.95rem;font-weight:500;margin:12px 0 4px;color:var(--mute)}
+pre{margin:4px 0;white-space:pre-wrap;word-break:break-word;font:inherit;font-size:.9rem;background:var(--bg);padding:8px;border-radius:2px}
+.err{color:var(--err)}
+.note{font-size:.85rem;max-width:70ch;margin-top:16px}
+@media (max-width:560px){form{grid-template-columns:1fr}dl{grid-template-columns:1fr}dt{margin-top:6px}}
+@media print{:root{--bg:#fff;--paper:#fff;--ink:#000;--mute:#444;--rule:#999}form,details,#status{display:none}}
+</style>
+</head>
+<body>
+<main>
+<h1>Flugwetter</h1>
+<p class="sub">Wetter an den Orten entlang deiner Strecke, aus öffentlichen Quellen.</p>
+
+<form id="f">
+  <label>Strecke (Orte mit Semikolon trennen)
+    <textarea id="route" rows="2" placeholder="Paderborn EDLP; Kassel; Erfurt"></textarea>
+  </label>
+  <label>Abflug (Ortszeit)<input id="when" type="datetime-local"></label>
+  <button id="go" type="submit">Wetter laden</button>
+</form>
+
+<details>
+  <summary>METAR und TAF einschalten (optional)</summary>
+  <p>Die US-Wetterbehörde erlaubt den Abruf aus Webseiten nicht direkt. Mit einer eigenen, kostenlosen Weiterleitung (Proxy) holt die App METAR und TAF trotzdem. Ohne Proxy zeigt sie für Orte mit Flugplatzkennung (vier Großbuchstaben, z. B. EDLP) einen Link zur Originalseite.</p>
+  <label>Proxy-Adresse<input id="proxy" placeholder="https://name.workers.dev/?url=" autocomplete="off" autocapitalize="none" spellcheck="false"></label>
+</details>
+
+<div id="status" role="status"></div>
+<section id="sum" class="box" hidden></section>
+<div id="cards"></div>
+
+<p class="note">Quellen: Open-Meteo.com (Prognose, CC BY 4.0), Deutscher Wetterdienst über Bright Sky (Warnungen), NOAA Aviation Weather Center (METAR/TAF). Die Wolkenbasis ist eine Schätzung aus der Differenz von Temperatur und Taupunkt und gilt vor allem für Quellwolken. Die App ersetzt keine amtliche Flugwetterberatung.</p>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const GEO = "https://geocoding-api.open-meteo.com/v1/search";
+const FC = "https://api.open-meteo.com/v1/forecast";
+const WARN = "https://api.brightsky.dev/alerts";
+const store = {
+  get(k) { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+};
+const pad = n => String(n).padStart(2, "0");
+const el = (tag, text, cls) => { const e = document.createElement(tag); if (text != null) e.textContent = text; if (cls) e.className = cls; return e; };
+const status = (t, err) => { const s = $("status"); s.textContent = t; s.className = err ? "err" : ""; };
+const r0 = x => Math.round(x), r1 = x => Math.round(x * 10) / 10;
+
+const d0 = new Date(Date.now() + 3600e3); d0.setMinutes(0, 0, 0);
+$("when").value = `${d0.getFullYear()}-${pad(d0.getMonth() + 1)}-${pad(d0.getDate())}T${pad(d0.getHours())}:00`;
+$("route").value = store.get("fw_route");
+$("proxy").value = store.get("fw_proxy");
+
+async function getJson(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("Fehler " + r.status);
+  return r.json();
+}
+async function viaProxy(target) {
+  const p = $("proxy").value.trim();
+  if (!p) return null;
+  const r = await fetch(p + encodeURIComponent(target));
+  if (!r.ok) throw new Error("Proxy-Fehler " + r.status);
+  const t = await r.text();
+  return t ? JSON.parse(t) : [];
+}
+
+function parseToken(t) {
+  t = t.trim();
+  const c = t.match(/^(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)$/);
+  if (c) return { name: t, lat: +c[1], lon: +c[2], icao: "" };
+  const m = t.match(/\b[A-Z]{4}\b/);
+  const icao = m ? m[0] : "";
+  const place = t.replace(icao, "").trim();
+  return { name: place || icao, place, icao };
+}
+
+async function resolve(p) {
+  if (p.lat != null) return p;
+  let g = null;
+  if (p.place || p.icao) {
+    const d = await getJson(`${GEO}?name=${encodeURIComponent(p.place || p.icao)}&count=1&language=de&format=json`);
+    g = d.results && d.results[0];
+  }
+  if (g) { p.lat = g.latitude; p.lon = g.longitude; p.label = [g.name, g.admin1].filter(Boolean).join(", "); return p; }
+  if (p.icao) {
+    const m = await viaProxy(`https://aviationweather.gov/api/data/metar?ids=${p.icao}&format=json`);
+    if (m && m[0] && m[0].lat != null) { p.lat = m[0].lat; p.lon = m[0].lon; p.label = m[0].name || p.icao; return p; }
+  }
+  throw new Error("Ort „" + p.name + "“ nicht gefunden. Versuche einen Ortsnamen oder Koordinaten wie 51.6, 8.6.");
+}
+
+async function forecast(p, iso) {
+  const h = "temperature_2m,dew_point_2m,precipitation,visibility,cloud_cover_low,cloud_cover_mid,cloud_cover_high,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cape,freezing_level_height";
+  const d = await getJson(`${FC}?latitude=${p.lat}&longitude=${p.lon}&hourly=${h}&wind_speed_unit=kn&timezone=UTC&forecast_days=7`);
+  const i = d.hourly.time.indexOf(iso);
+  if (i < 0) throw new Error("Für diese Zeit liegt keine Prognose vor (etwa 7 Tage im Voraus).");
+  const o = {};
+  for (const k of Object.keys(d.hourly)) o[k] = d.hourly[k][i];
+  return o;
+}
+
+async function aviation(p) {
+  if (!p.icao) return { none: true };
+  if (!$("proxy").value.trim()) return { link: true };
+  const [m, t] = await Promise.all([
+    viaProxy(`https://aviationweather.gov/api/data/metar?ids=${p.icao}&format=json`),
+    viaProxy(`https://aviationweather.gov/api/data/taf?ids=${p.icao}&format=json`)
+  ]);
+  return { metar: m && m[0], taf: t && t[0] };
+}
+
+const baseFt = f => (f.cloud_cover_low >= 10 && f.temperature_2m != null && f.dew_point_2m != null)
+  ? Math.max(0, (f.temperature_2m - f.dew_point_2m) * 125 * 3.281) : null;
+
+function flagsOf(f, alerts) {
+  const r = [];
+  if (f) {
+    if (f.visibility != null && f.visibility < 5000) r.push("Sicht unter 5 km");
+    if (f.wind_gusts_10m > 25) r.push("Böen über 25 kt");
+    const b = baseFt(f);
+    if (b != null && b < 2000) r.push("Wolkenbasis unter 2000 ft (geschätzt)");
+    if (f.cape >= 300) r.push(f.cape >= 1000 ? "hohe Gewitterneigung" : "mäßige Gewitterneigung");
+    if (f.precipitation >= 2) r.push("kräftiger Niederschlag");
+  }
+  if (alerts && alerts.length) r.push(alerts.length + (alerts.length > 1 ? " DWD-Warnungen" : " DWD-Warnung"));
+  return r;
+}
+
+function row(dl, k, v) { dl.append(el("dt", k), el("dd", v)); }
+const fmt = d => new Date(d).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+function card(p, res, t, iso) {
+  const [f, w, a] = res;
+  const art = el("article");
+  const hd = el("header");
+  hd.append(el("h2", p.name + (p.icao && p.place ? " (" + p.icao + ")" : "")), el("small", p.label || ""));
+  art.append(hd);
+  const alerts = w.status === "fulfilled" ? w.value : [];
+  const fl = flagsOf(f.status === "fulfilled" ? f.value : null, alerts);
+  if (fl.length) art.append(el("p", "Hinweise: " + fl.join(", "), "flags"));
+
+  if (f.status === "fulfilled") {
+    const v = f.value, dl = el("dl"), b = baseFt(v);
+    row(dl, "Wind", `${r0(v.wind_direction_10m)}° / ${r0(v.wind_speed_10m)} kt, Böen ${r0(v.wind_gusts_10m)} kt`);
+    row(dl, "Temperatur / Taupunkt", `${r1(v.temperature_2m)} °C / ${r1(v.dew_point_2m)} °C (Spreizung ${r1(v.temperature_2m - v.dew_point_2m)} K)`);
+    row(dl, "Wolkenbasis (geschätzt)", b == null ? "keine tiefen Wolken erwartet" : `ca. ${r0(b / 100) * 100} ft über Grund`);
+    row(dl, "Bewölkung", `tief ${r0(v.cloud_cover_low)} %, mittel ${r0(v.cloud_cover_mid)} %, hoch ${r0(v.cloud_cover_high)} %`);
+    row(dl, "Sicht", v.visibility == null ? "k. A." : `${r1(v.visibility / 1000)} km`);
+    row(dl, "Niederschlag", `${r1(v.precipitation)} mm/h`);
+    if (v.cape != null) row(dl, "Gewitterneigung", `${r0(v.cape)} J/kg CAPE (${v.cape < 100 ? "keine" : v.cape < 300 ? "gering" : v.cape < 1000 ? "mäßig" : "hoch"})`);
+    if (v.freezing_level_height != null) row(dl, "Nullgradgrenze", `${r0(v.freezing_level_height * 3.281 / 100) * 100} ft`);
+    art.append(dl);
+  } else art.append(el("p", "Prognose nicht verfügbar: " + f.reason.message, "err"));
+
+  art.append(el("h3", "Amtliche Warnungen (DWD)"));
+  if (w.status !== "fulfilled") art.append(el("p", "Warnungen nicht verfügbar: " + w.reason.message, "err"));
+  else if (!alerts.length) art.append(el("p", "Keine aktuellen Warnungen für diesen Ort."));
+  else for (const x of alerts) {
+    const on = new Date(x.onset) <= t && t <= new Date(x.expires);
+    art.append(el("p", `${x.event_de || x.headline_de}: ${fmt(x.onset)} bis ${fmt(x.expires)}${on ? " (zur Abflugzeit gültig)" : ""}`));
+  }
+
+  if (a.status === "fulfilled" && !a.value.none) {
+    art.append(el("h3", "METAR und TAF " + p.icao));
+    const x = a.value;
+    if (x.link) {
+      const l = el("a", "Bei aviationweather.gov öffnen");
+      l.href = `https://aviationweather.gov/data/metar/?ids=${p.icao}&taf=1`; l.target = "_blank"; l.rel = "noopener";
+      art.append(l);
+    } else {
+      art.append(el("pre", x.metar ? (x.metar.fltCat ? x.metar.fltCat + ": " : "") + (x.metar.rawOb || x.metar.raw_text || "") : "Kein aktuelles METAR."));
+      art.append(el("pre", x.taf ? (x.taf.rawTAF || x.taf.raw_text || "") : "Kein TAF."));
+    }
+  } else if (a.status === "rejected") art.append(el("p", "METAR/TAF nicht verfügbar: " + a.reason.message, "err"));
+  return { art, fl };
+}
+
+async function load(ev) {
+  ev.preventDefault();
+  const toks = $("route").value.split(/[;\n>→]+/).map(s => s.trim()).filter(Boolean);
+  if (!toks.length || !$("when").value) return status("Bitte mindestens einen Ort und die Abflugzeit angeben.", true);
+  store.set("fw_route", $("route").value); store.set("fw_proxy", $("proxy").value.trim());
+  const t = new Date($("when").value); t.setMinutes(t.getMinutes() + 30, 0, 0);
+  const iso = t.toISOString().slice(0, 13) + ":00";
+  $("go").disabled = true; $("cards").textContent = ""; $("sum").hidden = true;
+  status("Lade Wetter für " + toks.length + (toks.length > 1 ? " Orte …" : " Ort …"));
+  const out = await Promise.all(toks.map(async s => {
+    const p = parseToken(s);
+    try {
+      await resolve(p);
+      return { p, res: await Promise.allSettled([forecast(p, iso), getJson(`${WARN}?lat=${p.lat}&lon=${p.lon}`).then(d => d.alerts || []), aviation(p)]) };
+    } catch (e) { return { p, err: e.message }; }
+  }));
+  const sum = [];
+  for (const o of out) {
+    if (o.err) { const a = el("article"); a.append(el("h2", o.p.name), el("p", o.err, "err")); $("cards").append(a); continue; }
+    const c = card(o.p, o.res, t, iso);
+    $("cards").append(c.art);
+    if (c.fl.length) sum.push(o.p.name + ": " + c.fl.join(", "));
+  }
+  const s = $("sum"); s.textContent = "";
+  s.append(el("h2", "Hinweise entlang der Strecke"));
+  if (sum.length) { const ul = el("ul"); sum.forEach(x => ul.append(el("li", x))); s.append(ul); }
+  else s.append(el("p", "Keine auffälligen Werte an den abgefragten Orten. Geprüft werden Sicht unter 5 km, Böen über 25 kt, Wolkenbasis unter 2000 ft, Gewitterneigung, Niederschlag ab 2 mm/h und DWD-Warnungen."));
+  s.hidden = false;
+  status("Prognose für " + fmt(t.toISOString().slice(0, 13) + ":00:00Z") + " Ortszeit.");
+  $("go").disabled = false;
+}
+$("f").addEventListener("submit", load);
+</script>
+</body>
+</html>
