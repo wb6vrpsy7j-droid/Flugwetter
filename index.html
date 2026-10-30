@@ -49,6 +49,9 @@ article details{margin:6px 0;padding:6px 12px}
 article ul{margin:2px 0 8px;padding-left:20px}
 pre{margin:4px 0;white-space:pre-wrap;word-break:break-word;font:inherit;font-size:.9rem;background:var(--bg);padding:8px;border-radius:2px}
 .err{color:var(--err)}
+.gafor{display:flex;align-items:center;gap:10px;margin:0 0 8px;font-weight:500}
+.badge{display:inline-flex;align-items:center;justify-content:center;min-width:2.1em;height:2.1em;border-radius:4px;font-weight:500;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.g-C{background:#1456c8}.g-O{background:#2e8b3d}.g-D{background:#f2b705;color:#241a00}.g-M{background:#e0561b}.g-X{background:#b3261e}
 .note{font-size:.85rem;max-width:70ch;margin-top:16px}
 @media (max-width:560px){form{grid-template-columns:1fr}dl{grid-template-columns:1fr}dt{margin-top:6px}}
 @media print{:root{--bg:#fff;--paper:#fff;--ink:#000;--mute:#444;--rule:#999}body{padding:0;font-size:12pt}form,details,#status,.bar{display:none}.print-only{display:block;font-weight:500;margin:0 0 10px}article,.box{break-inside:avoid}}
@@ -79,7 +82,7 @@ pre{margin:4px 0;white-space:pre-wrap;word-break:break-word;font:inherit;font-si
 <section id="sum" class="box" hidden></section>
 <div id="cards"></div>
 
-<p class="note">Quellen: Open-Meteo.com (Prognose, CC BY 4.0), Deutscher Wetterdienst über Bright Sky (Warnungen), NOAA Aviation Weather Center (METAR/TAF). Die Wolkenbasis ist eine Schätzung aus der Differenz von Temperatur und Taupunkt und gilt vor allem für Quellwolken. Die App ersetzt keine amtliche Flugwetterberatung. (App-Version 5)</p>
+<p class="note">Quellen: Open-Meteo.com (Prognose, CC BY 4.0), Deutscher Wetterdienst über Bright Sky (Warnungen), NOAA Aviation Weather Center (METAR/TAF). Die Wolkenbasis ist eine Schätzung aus der Differenz von Temperatur und Taupunkt und gilt vor allem für Quellwolken. Die GAFOR-Einschätzung ist eine eigene Schätzung aus den Prognosewerten (Sicht und geschätzte Wolkenbasis) nach den Kategorien des DWD und nicht das amtliche GAFOR. Die App ersetzt keine amtliche Flugwetterberatung. (App-Version 6)</p>
 </main>
 
 <script>
@@ -184,6 +187,22 @@ async function aviation(p) {
 const baseFt = f => (f.cloud_cover_low >= 10 && f.temperature_2m != null && f.dew_point_2m != null)
   ? Math.max(0, (f.temperature_2m - f.dew_point_2m) * 125 * 3.281) : null;
 
+// GAFOR-Schätzung nach den Kategorien des DWD (Sicht und Wolkenuntergrenze)
+const GAF = {C:"CHARLIE, frei",O:"OSCAR, offen",D:"DELTA, schwierig",M:"MIKE, kritisch",X:"X-RAY, geschlossen"};
+const RANK = "CODMX";
+const catVis = m => m >= 10000 ? "C" : m >= 8000 ? "O" : m >= 5000 ? "D" : m >= 1500 ? "M" : "X";
+const catCig = ft => ft == null || ft >= 5000 ? "C" : ft >= 2000 ? "O" : ft >= 1000 ? "D" : ft >= 500 ? "M" : "X";
+function gafor(f) {
+  if (f.visibility == null) return null;
+  const cig = f.cloud_cover_low >= 63 && f.temperature_2m != null && f.dew_point_2m != null
+    ? Math.max(0, (f.temperature_2m - f.dew_point_2m) * 125 * 3.281) : null;
+  const v = catVis(f.visibility), c = catCig(cig);
+  const cat = RANK.indexOf(v) >= RANK.indexOf(c) ? v : c;
+  const by = cat === "C" ? "" : v === cat && c !== cat ? "Sicht" : c === cat && v !== cat ? "Wolkenbasis" : "Sicht und Wolkenbasis";
+  return { cat, by };
+}
+// ---- end gafor ----
+
 function flagsOf(f, alerts) {
   const r = [];
   if (f) {
@@ -193,6 +212,8 @@ function flagsOf(f, alerts) {
     if (b != null && b < 2000) r.push("Wolkenbasis unter 2000 ft (geschätzt)");
     if (f.cape >= 300) r.push(f.cape >= 1000 ? "hohe Gewitterneigung" : "mäßige Gewitterneigung");
     if (f.precipitation >= 2) r.push("kräftiger Niederschlag");
+    const g = gafor(f);
+    if (g && "DMX".includes(g.cat)) r.push("GAFOR-Schätzung " + g.cat);
   }
   if (alerts && alerts.length) r.push(alerts.length + (alerts.length > 1 ? " DWD-Warnungen" : " DWD-Warnung"));
   return r;
@@ -309,6 +330,12 @@ function card(p, res, t, iso) {
   art.append(hd);
   const alerts = w.status === "fulfilled" ? w.value : [];
   const fl = flagsOf(f.status === "fulfilled" ? f.value : null, alerts);
+  const g = f.status === "fulfilled" ? gafor(f.value) : null;
+  if (g) {
+    const gp = el("p", null, "gafor");
+    gp.append(el("span", g.cat, "badge g-" + g.cat), el("span", "GAFOR-Schätzung: " + g.cat + " – " + GAF[g.cat] + (g.by ? " (bestimmt durch " + g.by + ")" : "")));
+    art.append(gp);
+  }
   if (fl.length) art.append(el("p", "Hinweise: " + fl.join(", "), "flags"));
 
   if (f.status === "fulfilled") {
