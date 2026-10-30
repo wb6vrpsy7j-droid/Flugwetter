@@ -52,6 +52,9 @@ pre{margin:4px 0;white-space:pre-wrap;word-break:break-word;font:inherit;font-si
 .gafor{display:flex;align-items:center;gap:10px;margin:0 0 8px;font-weight:500}
 .badge{display:inline-flex;align-items:center;justify-content:center;min-width:2.1em;height:2.1em;border-radius:4px;font-weight:500;color:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
 .g-C{background:#1456c8}.g-O{background:#2e8b3d}.g-D{background:#f2b705;color:#241a00}.g-M{background:#e0561b}.g-X{background:#b3261e}
+.wind{display:flex;align-items:center;gap:16px;margin:0 0 10px}
+.wind svg{flex:none;width:112px;height:112px}
+.wind div{line-height:1.4}
 .note{font-size:.85rem;max-width:70ch;margin-top:16px}
 @media (max-width:560px){form{grid-template-columns:1fr}dl{grid-template-columns:1fr}dt{margin-top:6px}}
 @media print{:root{--bg:#fff;--paper:#fff;--ink:#000;--mute:#444;--rule:#999}body{padding:0;font-size:12pt}form,details,#status,.bar{display:none}.print-only{display:block;font-weight:500;margin:0 0 10px}article,.box{break-inside:avoid}}
@@ -82,7 +85,7 @@ pre{margin:4px 0;white-space:pre-wrap;word-break:break-word;font:inherit;font-si
 <section id="sum" class="box" hidden></section>
 <div id="cards"></div>
 
-<p class="note">Quellen: Open-Meteo.com (Prognose, CC BY 4.0), Deutscher Wetterdienst über Bright Sky (Warnungen), NOAA Aviation Weather Center (METAR/TAF). Die Wolkenbasis ist eine Schätzung aus der Differenz von Temperatur und Taupunkt und gilt vor allem für Quellwolken. Die GAFOR-Einschätzung ist eine eigene Schätzung aus den Prognosewerten (Sicht und geschätzte Wolkenbasis) nach den Kategorien des DWD und nicht das amtliche GAFOR. Die App ersetzt keine amtliche Flugwetterberatung. (App-Version 6)</p>
+<p class="note">Quellen: Open-Meteo.com (Prognose, CC BY 4.0), Deutscher Wetterdienst über Bright Sky (Warnungen), NOAA Aviation Weather Center (METAR/TAF). Die Wolkenbasis ist eine Schätzung aus der Differenz von Temperatur und Taupunkt und gilt vor allem für Quellwolken. Die GAFOR-Einschätzung ist eine eigene Schätzung aus den Prognosewerten (Sicht und geschätzte Wolkenbasis) nach den Kategorien des DWD und nicht das amtliche GAFOR. Die App ersetzt keine amtliche Flugwetterberatung. (App-Version 7)</p>
 </main>
 
 <script>
@@ -202,6 +205,37 @@ function gafor(f) {
   return { cat, by };
 }
 // ---- end gafor ----
+
+// Windrose: Pfeil zeigt in die Richtung, in die der Wind weht; die Windrichtung ist die Richtung, aus der er kommt
+const DIRS = ["N","NNO","NO","ONO","O","OSO","SO","SSO","S","SSW","SW","WSW","W","WNW","NW","NNW"];
+function windRose(deg, kt, gust) {
+  const NS = "http://www.w3.org/2000/svg";
+  const mk = (n, a) => { const e = document.createElementNS(NS, n); for (const k in a) e.setAttribute(k, a[k]); return e; };
+  const abbr = DIRS[Math.round(deg / 22.5) % 16];
+  const calm = kt < 1;
+  const svg = mk("svg", { viewBox: "0 0 120 120", role: "img", "aria-label": calm ? "Windrose: windstill" : "Windrose: Wind aus " + r0(deg) + " Grad" });
+  svg.append(mk("circle", { cx: 60, cy: 60, r: 46, fill: "none", stroke: "currentColor", "stroke-opacity": 0.4, "stroke-width": 1.5 }));
+  for (let a = 0; a < 360; a += 30) {
+    const r1 = a % 90 === 0 ? 38 : 42, rad = a * Math.PI / 180;
+    svg.append(mk("line", { x1: 60 + Math.sin(rad) * r1, y1: 60 - Math.cos(rad) * r1, x2: 60 + Math.sin(rad) * 46, y2: 60 - Math.cos(rad) * 46, stroke: "currentColor", "stroke-opacity": 0.5, "stroke-width": 1.5 }));
+  }
+  [["N", 0], ["O", 90], ["S", 180], ["W", 270]].forEach(([t, a]) => {
+    const rad = a * Math.PI / 180;
+    const tx = mk("text", { x: 60 + Math.sin(rad) * 54, y: 60 - Math.cos(rad) * 54 + 4, "text-anchor": "middle", "font-size": 11, fill: "currentColor" });
+    tx.textContent = t; svg.append(tx);
+  });
+  if (!calm) {
+    const g = mk("g", { transform: `rotate(${deg} 60 60)` });
+    g.append(mk("line", { x1: 60, y1: 16, x2: 60, y2: 78, style: "stroke:var(--blue)", "stroke-width": 3, "stroke-linecap": "round" }));
+    g.append(mk("polygon", { points: "60,92 50,74 70,74", style: "fill:var(--blue)" }));
+    svg.append(g);
+  }
+  const box = el("div", null, "wind"), txt = el("div");
+  txt.append(el("div", calm ? "Wind: windstill" : `Wind aus ${r0(deg)}° (${abbr})`), el("small", calm ? "" : `${r0(kt)} kt` + (gust > kt + 2 ? `, Böen bis ${r0(gust)} kt` : "")));
+  box.append(svg, txt);
+  return box;
+}
+// ---- end windrose ----
 
 function flagsOf(f, alerts) {
   const r = [];
@@ -336,6 +370,7 @@ function card(p, res, t, iso) {
     gp.append(el("span", g.cat, "badge g-" + g.cat), el("span", "GAFOR-Schätzung: " + g.cat + " – " + GAF[g.cat] + (g.by ? " (bestimmt durch " + g.by + ")" : "")));
     art.append(gp);
   }
+  if (f.status === "fulfilled" && f.value.wind_direction_10m != null) art.append(windRose(f.value.wind_direction_10m, f.value.wind_speed_10m, f.value.wind_gusts_10m));
   if (fl.length) art.append(el("p", "Hinweise: " + fl.join(", "), "flags"));
 
   if (f.status === "fulfilled") {
