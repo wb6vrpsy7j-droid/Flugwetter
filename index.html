@@ -27,6 +27,9 @@ textarea{resize:vertical}
 input:focus-visible,textarea:focus-visible,button:focus-visible,summary:focus-visible{outline:3px solid var(--warn);outline-offset:1px}
 button{font:inherit;font-weight:500;border:0;padding:10px 20px;min-height:44px;border-radius:2px;cursor:pointer;background:var(--blue);color:#fff;touch-action:manipulation}
 button:disabled{opacity:.55;cursor:wait}
+button.alt{background:transparent;color:var(--ink);border:1px solid var(--ink)}
+.bar{margin:0 0 12px}
+.print-only{display:none}
 form button{grid-column:1/-1}
 details{margin:12px 0;background:var(--paper);border:1px solid var(--rule);padding:10px 16px}
 summary{cursor:pointer;min-height:32px}
@@ -48,7 +51,7 @@ pre{margin:4px 0;white-space:pre-wrap;word-break:break-word;font:inherit;font-si
 .err{color:var(--err)}
 .note{font-size:.85rem;max-width:70ch;margin-top:16px}
 @media (max-width:560px){form{grid-template-columns:1fr}dl{grid-template-columns:1fr}dt{margin-top:6px}}
-@media print{:root{--bg:#fff;--paper:#fff;--ink:#000;--mute:#444;--rule:#999}form,details,#status{display:none}}
+@media print{:root{--bg:#fff;--paper:#fff;--ink:#000;--mute:#444;--rule:#999}body{padding:0;font-size:12pt}form,details,#status,.bar{display:none}.print-only{display:block;font-weight:500;margin:0 0 10px}article,.box{break-inside:avoid}}
 </style>
 </head>
 <body>
@@ -71,10 +74,12 @@ pre{margin:4px 0;white-space:pre-wrap;word-break:break-word;font:inherit;font-si
 </details>
 
 <div id="status" role="status"></div>
+<div class="bar"><button id="prt" class="alt" type="button" hidden>Drucken</button></div>
+<p class="print-only" id="ph"></p>
 <section id="sum" class="box" hidden></section>
 <div id="cards"></div>
 
-<p class="note">Quellen: Open-Meteo.com (Prognose, CC BY 4.0), Deutscher Wetterdienst über Bright Sky (Warnungen), NOAA Aviation Weather Center (METAR/TAF). Die Wolkenbasis ist eine Schätzung aus der Differenz von Temperatur und Taupunkt und gilt vor allem für Quellwolken. Die App ersetzt keine amtliche Flugwetterberatung. (App-Version 4)</p>
+<p class="note">Quellen: Open-Meteo.com (Prognose, CC BY 4.0), Deutscher Wetterdienst über Bright Sky (Warnungen), NOAA Aviation Weather Center (METAR/TAF). Die Wolkenbasis ist eine Schätzung aus der Differenz von Temperatur und Taupunkt und gilt vor allem für Quellwolken. Die App ersetzt keine amtliche Flugwetterberatung. (App-Version 5)</p>
 </main>
 
 <script>
@@ -350,7 +355,7 @@ async function load(ev) {
   store.set("fw_route", $("route").value); store.set("fw_proxy", $("proxy").value);
   const t = new Date($("when").value); t.setMinutes(t.getMinutes() + 30, 0, 0);
   const iso = t.toISOString().slice(0, 13) + ":00";
-  $("go").disabled = true; $("cards").textContent = ""; $("sum").hidden = true;
+  $("go").disabled = true; $("cards").textContent = ""; $("sum").hidden = true; $("prt").hidden = true; $("ph").textContent = "";
   status("Lade Wetter für " + toks.length + (toks.length > 1 ? " Orte …" : " Ort …"));
   const out = await Promise.all(toks.map(async s => {
     const p = parseToken(s);
@@ -371,10 +376,14 @@ async function load(ev) {
   if (sum.length) { const ul = el("ul"); sum.forEach(x => ul.append(el("li", x))); s.append(ul); }
   else s.append(el("p", "Keine auffälligen Werte an den abgefragten Orten. Geprüft werden Sicht unter 5 km, Böen über 25 kt, Wolkenbasis unter 2000 ft, Gewitterneigung, Niederschlag ab 2 mm/h und DWD-Warnungen."));
   s.hidden = false;
-  status("Prognose für " + fmt(t.toISOString().slice(0, 13) + ":00:00Z") + " Ortszeit.");
+  const when = fmt(t.toISOString().slice(0, 13) + ":00:00Z");
+  status("Prognose für " + when + " Ortszeit.");
+  $("ph").textContent = "Flugwetter: " + toks.join(" → ") + ". Prognose für " + when + " Ortszeit.";
+  $("prt").hidden = false;
   $("go").disabled = false;
 }
 $("f").addEventListener("submit", load);
+$("prt").addEventListener("click", () => window.print());
 </script>
 </body>
 </html>
