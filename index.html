@@ -42,6 +42,8 @@ dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 16px;margin:0}
 dt{color:var(--mute)}
 dd{margin:0;font-variant-numeric:tabular-nums}
 h3{font-size:.95rem;font-weight:500;margin:12px 0 4px;color:var(--mute)}
+article details{margin:6px 0;padding:6px 12px}
+article ul{margin:2px 0 8px;padding-left:20px}
 pre{margin:4px 0;white-space:pre-wrap;word-break:break-word;font:inherit;font-size:.9rem;background:var(--bg);padding:8px;border-radius:2px}
 .err{color:var(--err)}
 .note{font-size:.85rem;max-width:70ch;margin-top:16px}
@@ -173,6 +175,106 @@ function flagsOf(f, alerts) {
 function row(dl, k, v) { dl.append(el("dt", k), el("dd", v)); }
 const fmt = d => new Date(d).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
+// ---- decoder ----
+const WXD = {MI:"flach",BC:"Schwaden",PR:"teilweise",DR:"treibend",BL:"aufgewirbelt",SH:"Schauer",TS:"Gewitter",FZ:"gefrierend",DZ:"Nieselregen",RA:"Regen",SN:"Schnee",SG:"Schneegriesel",PL:"Eiskörner",GR:"Hagel",GS:"Graupel",BR:"feuchter Dunst",FG:"Nebel",FU:"Rauch",VA:"Vulkanasche",DU:"Staub",SA:"Sand",HZ:"Dunst",SQ:"Sturmböen",FC:"Trichterwolke",SS:"Sandsturm",DS:"Staubsturm",UP:"unbekannter Niederschlag"};
+const WXS = {SHRA:"Regenschauer",SHSN:"Schneeschauer",SHGR:"Hagelschauer",SHGS:"Graupelschauer",SHRASN:"Schneeregenschauer",SHSNRA:"Schneeregenschauer",TSRA:"Gewitter mit Regen",TSGR:"Gewitter mit Hagel",TSSN:"Gewitter mit Schnee",TSGS:"Gewitter mit Graupel",FZRA:"gefrierender Regen",FZDZ:"gefrierender Nieselregen",FZFG:"gefrierender Nebel",MIFG:"Bodennebel",BCFG:"Nebelschwaden",RASN:"Schneeregen",SNRA:"Schneeregen"};
+const COVER = {FEW:"wenige Wolken (1–2/8)",SCT:"aufgelockerte Bewölkung (3–4/8)",BKN:"überwiegend bewölkt (5–7/8)",OVC:"bedeckt (8/8)"};
+const CAT = {VFR:"VFR, gute Bedingungen",MVFR:"MVFR, eingeschränkt",IFR:"IFR, schlechte Bedingungen",LIFR:"LIFR, sehr schlechte Bedingungen"};
+const dd = (d, h, m) => `${+d}. um ${h}:${m || "00"} UTC`;
+const tc = x => x.startsWith("M") ? -x.slice(1) : +x;
+
+function wx(t) {
+  const m = t.match(/^([-+]|VC)?((?:MI|BC|PR|DR|BL|SH|TS|FZ|DZ|RA|SN|SG|PL|GR|GS|BR|FG|FU|VA|DU|SA|HZ|SQ|FC|SS|DS|UP)+)$/);
+  if (!m) return null;
+  const name = WXS[m[2]] || m[2].match(/../g).map(c => WXD[c]).join(" ");
+  const add = m[1] === "-" ? " (leicht)" : m[1] === "+" ? " (stark)" : m[1] === "VC" ? " in der Umgebung" : "";
+  return "Wetter: " + name + add;
+}
+
+function decodeTok(t) {
+  let m;
+  if (t === "CAVOK") return "CAVOK: Sicht 10 km oder mehr, keine Wolken unter 5000 ft, kein bedeutendes Wetter";
+  if (t === "NOSIG") return "keine wesentliche Änderung erwartet";
+  if (t === "NSW") return "kein bedeutendes Wetter mehr";
+  if (t === "NSC" || t === "NCD" || t === "SKC") return "keine bedeutenden Wolken";
+  if (t === "CLR") return "keine Wolken";
+  if (t === "AUTO") return "automatische Messung";
+  if (t === "COR") return "Korrektur";
+  if (m = t.match(/^(VRB|\d{3})(\d{2,3})(?:G(\d{2,3}))?(KT|MPS)$/)) {
+    const k = m[4] === "MPS" ? 1.944 : 1, s = r0(m[2] * k), g = m[3] ? r0(m[3] * k) : null;
+    if (+m[2] === 0) return "Wind: windstill";
+    return (m[1] === "VRB" ? "Wind wechselnd" : "Wind aus " + m[1] + "°") + ", " + s + " kt" + (g ? ", Böen bis " + g + " kt" : "");
+  }
+  if (m = t.match(/^(\d{3})V(\d{3})$/)) return `Windrichtung schwankt zwischen ${m[1]}° und ${m[2]}°`;
+  if (/^\d{4}$/.test(t)) { const v = +t; return v >= 9999 ? "Sicht 10 km oder mehr" : v >= 1000 ? "Sicht " + (v / 1000).toLocaleString("de-DE") + " km" : "Sicht " + v + " m"; }
+  if (m = t.match(/^(FEW|SCT|BKN|OVC)(\d{3})(CB|TCU)?$/)) return `${COVER[m[1]]} in ${+m[2] * 100} ft über Grund` + (m[3] === "CB" ? ", mit Gewitterwolken (CB)" : m[3] === "TCU" ? ", mit stark quellenden Wolken (TCU)" : "");
+  if (m = t.match(/^VV(\d{3})$/)) return `Himmel nicht erkennbar, Vertikalsicht ${+m[1] * 100} ft`;
+  if (m = t.match(/^(M?\d{2})\/(M?\d{2})$/)) return `Temperatur ${tc(m[1])} °C, Taupunkt ${tc(m[2])} °C`;
+  if (m = t.match(/^Q(\d{4})$/)) return `QNH ${+m[1]} hPa`;
+  if (m = t.match(/^A(\d{4})$/)) return `Luftdruck ${m[1].slice(0, 2)}.${m[1].slice(2)} inHg`;
+  if (m = t.match(/^T([XN])(M?\d{2})\/(\d{2})(\d{2})Z$/)) return `${m[1] === "X" ? "Höchsttemperatur" : "Tiefsttemperatur"} ${tc(m[2])} °C am ${dd(m[3], m[4])}`;
+  return wx(t);
+}
+
+function decodeMetar(raw) {
+  const t = raw.trim().split(/\s+/), out = [];
+  let i = 0, m;
+  if (t[i] === "METAR" || t[i] === "SPECI") { if (t[i] === "SPECI") out.push("Sondermeldung (SPECI)"); i++; }
+  if (/^[A-Z]{4}$/.test(t[i])) i++;
+  if (m = (t[i] || "").match(/^(\d{2})(\d{2})(\d{2})Z$/)) { out.push("Beobachtung am " + dd(m[1], m[2], m[3])); i++; }
+  for (; i < t.length; i++) {
+    if (t[i] === "RMK") break;
+    if (t[i] === "BECMG" || t[i] === "TEMPO") { out.push(t[i] === "BECMG" ? "Trend: allmähliche Änderung" : "Trend: zeitweise"); continue; }
+    const d = decodeTok(t[i]);
+    if (d) out.push(d);
+  }
+  return out;
+}
+
+function decodeTaf(raw) {
+  const t = raw.trim().split(/\s+/), head = [];
+  let i = 0, m, cur = { title: "Zunächst", items: [] };
+  const groups = [cur];
+  const per = s => { const p = (s || "").match(/^(\d{2})(\d{2})\/(\d{2})(\d{2})$/); return p ? ` von ${dd(p[1], p[2])} bis ${dd(p[3], p[4])}` : ""; };
+  if (t[i] === "TAF") i++;
+  if (t[i] === "AMD" || t[i] === "COR") { head.push(t[i] === "AMD" ? "geändert" : "korrigiert"); i++; }
+  if (/^[A-Z]{4}$/.test(t[i])) i++;
+  if (m = (t[i] || "").match(/^(\d{2})(\d{2})(\d{2})Z$/)) { head.push("ausgegeben am " + dd(m[1], m[2], m[3])); i++; }
+  if (m = (t[i] || "").match(/^(\d{2})(\d{2})\/(\d{2})(\d{2})$/)) { head.push(`gültig von ${dd(m[1], m[2])} bis ${dd(m[3], m[4])}`); i++; }
+  for (; i < t.length; i++) {
+    const x = t[i]; let title = null;
+    if (x === "RMK") break;
+    if (/^PROB\d\d$/.test(x)) {
+      title = "Wahrscheinlichkeit " + x.slice(4) + " %";
+      if (t[i + 1] === "TEMPO") { title += ", zeitweise"; i++; }
+      if (per(t[i + 1])) { title += per(t[i + 1]); i++; }
+    } else if (x === "BECMG" || x === "TEMPO") {
+      title = (x === "BECMG" ? "Allmähliche Änderung" : "Zeitweise");
+      if (per(t[i + 1])) { title += per(t[i + 1]); i++; }
+    } else if (/^FM\d{6}$/.test(x)) title = "Ab " + dd(x.slice(2, 4), x.slice(4, 6), x.slice(6, 8));
+    if (title) { cur = { title, items: [] }; groups.push(cur); continue; }
+    const d = decodeTok(x);
+    if (d) cur.items.push(d);
+  }
+  return { head, groups };
+}
+
+function renderAviation(art, x) {
+  const lst = a => { const u = el("ul"); a.forEach(s => u.append(el("li", s))); return u; };
+  const rawBox = s => { const d = el("details"); d.append(el("summary", "Originaltext"), el("pre", s)); return d; };
+  if (x.metar) {
+    const r = x.metar.rawOb || x.metar.raw_text || "";
+    art.append(el("p", "METAR, aktuelle Beobachtung" + (x.metar.fltCat ? " – " + (CAT[x.metar.fltCat] || x.metar.fltCat) : ""), "flags"), lst(decodeMetar(r)), rawBox(r));
+  } else art.append(el("p", "Kein aktuelles METAR für diesen Platz."));
+  if (x.taf) {
+    const r = x.taf.rawTAF || x.taf.raw_text || "", t = decodeTaf(r);
+    art.append(el("p", "TAF, Vorhersage" + (t.head.length ? " (" + t.head.join(", ") + ")" : ""), "flags"));
+    t.groups.forEach(g => { if (g.items.length) art.append(el("p", g.title, "flags"), lst(g.items)); });
+    art.append(rawBox(r));
+  } else art.append(el("p", "Kein TAF für diesen Platz."));
+}
+// ---- end decoder ----
+
 function card(p, res, t, iso) {
   const [f, w, a] = res;
   const art = el("article");
@@ -212,8 +314,7 @@ function card(p, res, t, iso) {
       l.href = `https://aviationweather.gov/data/metar/?ids=${p.icao}&taf=1`; l.target = "_blank"; l.rel = "noopener";
       art.append(l);
     } else {
-      art.append(el("pre", x.metar ? (x.metar.fltCat ? x.metar.fltCat + ": " : "") + (x.metar.rawOb || x.metar.raw_text || "") : "Kein aktuelles METAR."));
-      art.append(el("pre", x.taf ? (x.taf.rawTAF || x.taf.raw_text || "") : "Kein TAF."));
+      renderAviation(art, x);
     }
   } else if (a.status === "rejected") art.append(el("p", "METAR/TAF nicht verfügbar: " + a.reason.message, "err"));
   return { art, fl };
