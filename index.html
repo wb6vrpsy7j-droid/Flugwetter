@@ -59,8 +59,8 @@ pre{margin:4px 0;white-space:pre-wrap;word-break:break-word;font:inherit;font-si
 .tabs button{display:flex;flex-direction:column;align-items:center;line-height:1.25;padding:8px 14px}
 .tabs button small{font-weight:400;color:var(--mute);font-size:.8rem}
 .tabs button.sel{box-shadow:0 0 0 3px var(--blue)}
-#gimg,#bimg{width:100%;height:auto;display:block;margin-top:8px;border:1px solid var(--rule);background:#fff}
-#gimg[hidden],#bimg[hidden]{display:none}
+#gimg,#bimg,#wimg{width:100%;height:auto;display:block;margin-top:8px;border:1px solid var(--rule);background:#fff}
+#gimg[hidden],#bimg[hidden],#wimg[hidden]{display:none}
 select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--rule);padding:8px;border-radius:2px;width:100%;min-width:0;min-height:44px}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:8px 0}
 .note{font-size:.85rem;max-width:70ch;margin-top:16px}
@@ -122,9 +122,27 @@ select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:
   <p id="bst" class="note"></p>
   <img id="bimg" alt="Bodenkarte des Deutschen Wetterdienstes" hidden>
 </section>
+<section id="wk" class="box" hidden>
+  <h2>Wind und Temperatur (DWD)</h2>
+  <div class="row">
+    <label>Höhe
+      <select id="wlev"><option value="lv_000000">Boden</option><option value="lv_000011">Boden (Böen)</option><option value="lv_000152">500 ft AMSL</option><option value="lv_000305">1000 ft AMSL</option><option value="lv_000610" selected>2000 ft AMSL</option><option value="lv_000915">3000 ft AMSL</option><option value="lv_000850">FL 050</option><option value="lv_000700">FL 100</option><option value="lv_000600">FL 140</option><option value="lv_000500">FL 180</option></select>
+    </label>
+    <label>Ausschnitt
+      <select id="warea"><option value="eur_">Europa</option><option value="ce_">Mitteleuropa</option><option value="ndl_">Deutschland Nord/Küste</option><option value="mdl_" selected>Deutschland</option><option value="sdl_">Deutschland Süd/Alpen</option></select>
+    </label>
+  </div>
+  <div class="tabs">
+    <button type="button" class="alt" id="wgo">Karte für Abflugzeit</button>
+    <button type="button" class="alt" id="wminus">−1 h</button>
+    <button type="button" class="alt" id="wplus">+1 h</button>
+  </div>
+  <p id="wst" class="note"></p>
+  <img id="wimg" alt="Wind- und Temperaturkarte des Deutschen Wetterdienstes" hidden>
+</section>
 <div id="cards"></div>
 
-<p class="note">Quellen: Open-Meteo.com (Prognose, CC BY 4.0), Deutscher Wetterdienst über Bright Sky (Warnungen), NOAA Aviation Weather Center (METAR/TAF). Die Wolkenbasis ist eine Schätzung aus der Differenz von Temperatur und Taupunkt und gilt vor allem für Quellwolken. Die GAFOR-Einschätzung ist eine eigene Schätzung aus den Prognosewerten (Sicht und geschätzte Wolkenbasis) nach den Kategorien des DWD und nicht das amtliche GAFOR; das amtliche GAFOR (Grafik) stammt vom DWD und wird mit deinem eigenen Zugang geladen. Die App ersetzt keine amtliche Flugwetterberatung. (App-Version 10)</p>
+<p class="note">Quellen: Open-Meteo.com (Prognose, CC BY 4.0), Deutscher Wetterdienst über Bright Sky (Warnungen), NOAA Aviation Weather Center (METAR/TAF). Die Wolkenbasis ist eine Schätzung aus der Differenz von Temperatur und Taupunkt und gilt vor allem für Quellwolken. Die GAFOR-Einschätzung ist eine eigene Schätzung aus den Prognosewerten (Sicht und geschätzte Wolkenbasis) nach den Kategorien des DWD und nicht das amtliche GAFOR; das amtliche GAFOR (Grafik) stammt vom DWD und wird mit deinem eigenen Zugang geladen. Die App ersetzt keine amtliche Flugwetterberatung. (App-Version 11)</p>
 </main>
 
 <script>
@@ -484,7 +502,7 @@ async function load(ev) {
   $("prt").hidden = false;
   $("gaf").hidden = false;
   updateGaf();
-  $("bk").hidden = false; bkRun = null;
+  $("bk").hidden = false; $("wk").hidden = false; viewers.forEach(v => v.reset());
   $("go").disabled = false;
 }
 // ---- gafor-zeiten ----
@@ -545,46 +563,55 @@ async function loadGafor(n) {
   } catch (e) { fail(e.message === "Failed to fetch" ? "Keine Verbindung zum Proxy. Ist der Worker mit dem neuen Code veröffentlicht?" : e.message); }
 }
 document.querySelectorAll("#gaf .tabs button").forEach(b => b.addEventListener("click", () => loadGafor(b.dataset.n)));
-// ---- bodenkarten ----
-let bkRun = null, bkStep = 0, bkSuffix = "", bkUrl = null;
+// ---- karten ----
 async function workerGet(path, key) { return fetch(new URL(proxyBase()).origin + path, { headers: { "X-App-Key": key } }); }
-async function bkLoad(delta) {
-  const out = $("bst"), key = $("gkey").value.trim(), base = proxyBase();
-  const fail = m => { out.textContent = m; out.className = "note err"; $("bimg").hidden = true; };
-  if (!base || !key) return fail("Bitte Proxy-Adresse und Schlüssel unter „METAR und TAF einschalten“ eintragen.");
-  store.set("fw_gkey", key);
-  out.textContent = "Lade Karte …"; out.className = "note";
-  let hint = "";
-  try {
-    if (delta == null || bkRun == null) {
-      const r = await workerGet("/chartrun", key);
-      if (!r.ok) throw new Error(r.status === 401 ? "Schlüssel falsch oder Anmeldung bei flugwetter.de abgelehnt (Fehler 401)." : "Fehler " + r.status + " beim Abruf des Modelllaufs.");
-      const run = (await r.json()).run;
-      if (!run) throw new Error("Der aktuelle Modelllauf wurde auf der Seite nicht gefunden.");
-      bkSuffix = run.slice(8);
-      bkRun = Date.UTC(+run.slice(0, 4), +run.slice(4, 6) - 1, +run.slice(6, 8), +run.slice(8, 10), +run.slice(10, 12));
-      const want = Math.round((new Date($("when").value).getTime() - bkRun) / 3600e3);
-      bkStep = Math.min(48, Math.max(3, want));
-      if (want < 3 || want > 48) hint = " Deine Abflugzeit liegt außerhalb der Karten (+3 bis +48 Stunden), gezeigt wird der nächstliegende Zeitschritt.";
-    } else bkStep = Math.min(48, Math.max(3, bkStep + delta));
-    const src = $("bprod").value + $("barea").value + "lv_000000_p_" + String(bkStep).padStart(3, "0") + "_" + bkSuffix + ".png";
-    const r = await workerGet("/chart?src=" + encodeURIComponent(src), key);
-    if (!r.ok) throw new Error(r.status === 401 ? "Schlüssel falsch oder Anmeldung abgelehnt (Fehler 401)." : "Fehler " + r.status + ": Diese Karte gibt es nicht oder sie ist nicht abrufbar.");
-    const b = await r.blob();
-    if (!b.type.startsWith("image/")) throw new Error("Statt eines Bildes kam eine andere Antwort.");
-    if (bkUrl) URL.revokeObjectURL(bkUrl);
-    bkUrl = URL.createObjectURL(b);
-    $("bimg").src = bkUrl; $("bimg").hidden = false;
-    const v = bkRun + bkStep * 3600e3;
-    const loc = new Date(v).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
-    out.textContent = `Gültig ${loc} Uhr Ortszeit (${hhIn(v, "UTC")} UTC), Modelllauf ${bkRun ? hhIn(bkRun, "UTC") : ""} UTC, +${bkStep} h.` + hint;
-  } catch (e) { fail(e.message === "Failed to fetch" ? "Keine Verbindung zum Proxy. Ist der Worker mit dem neuen Code veröffentlicht?" : e.message); }
+const pad3 = n => String(n).padStart(3, "0");
+// Kartenanzeige für Bodenkarten ("b") und Wind/Temperatur ("w"): Modelllauf holen, Zeitschritt zur Abflugzeit wählen, blättern
+function chartViewer(p, runKey, srcOf, selectIds) {
+  const st = { run: null, step: 0, suffix: "", url: null };
+  const E = s => $(p + s);
+  async function go(delta) {
+    const out = E("st"), key = $("gkey").value.trim(), base = proxyBase();
+    const fail = m => { out.textContent = m; out.className = "note err"; E("img").hidden = true; };
+    if (!base || !key) return fail("Bitte Proxy-Adresse und Schlüssel unter „METAR und TAF einschalten“ eintragen.");
+    store.set("fw_gkey", key);
+    out.textContent = "Lade Karte …"; out.className = "note";
+    let hint = "";
+    try {
+      if (delta == null || st.run == null) {
+        const r = await workerGet("/chartrun?p=" + runKey, key);
+        if (!r.ok) throw new Error(r.status === 401 ? "Schlüssel falsch oder Anmeldung bei flugwetter.de abgelehnt (Fehler 401)." : "Fehler " + r.status + " beim Abruf des Modelllaufs.");
+        const run = (await r.json()).run;
+        if (!run) throw new Error("Der aktuelle Modelllauf wurde auf der Seite nicht gefunden.");
+        st.suffix = run.slice(8);
+        st.run = Date.UTC(+run.slice(0, 4), +run.slice(4, 6) - 1, +run.slice(6, 8), +run.slice(8, 10), +run.slice(10, 12));
+        const want = Math.round((new Date($("when").value).getTime() - st.run) / 3600e3);
+        st.step = Math.min(48, Math.max(3, want));
+        if (want < 3 || want > 48) hint = " Deine Abflugzeit liegt außerhalb der Karten (+3 bis +48 Stunden), gezeigt wird der nächstliegende Zeitschritt.";
+      } else st.step = Math.min(48, Math.max(3, st.step + delta));
+      const r = await workerGet("/chart?src=" + encodeURIComponent(srcOf(st.step, st.suffix)), key);
+      if (!r.ok) throw new Error(r.status === 401 ? "Schlüssel falsch oder Anmeldung abgelehnt (Fehler 401)." : "Fehler " + r.status + ": Diese Karte gibt es nicht oder sie ist nicht abrufbar.");
+      const b = await r.blob();
+      if (!b.type.startsWith("image/")) throw new Error("Statt eines Bildes kam eine andere Antwort.");
+      if (st.url) URL.revokeObjectURL(st.url);
+      st.url = URL.createObjectURL(b);
+      E("img").src = st.url; E("img").hidden = false;
+      const v = st.run + st.step * 3600e3;
+      const loc = new Date(v).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
+      out.textContent = `Gültig ${loc} Uhr Ortszeit (${hhIn(v, "UTC")} UTC), Modelllauf ${hhIn(st.run, "UTC")} UTC, +${st.step} h.` + hint;
+    } catch (e) { fail(e.message === "Failed to fetch" ? "Keine Verbindung zum Proxy. Ist der Worker mit dem neuen Code veröffentlicht?" : e.message); }
+  }
+  E("go").addEventListener("click", () => go(null));
+  E("minus").addEventListener("click", () => go(-1));
+  E("plus").addEventListener("click", () => go(1));
+  selectIds.forEach(id => $(id).addEventListener("change", () => st.run != null && go(0)));
+  return { reset() { st.run = null; } };
 }
-$("bgo").addEventListener("click", () => bkLoad(null));
-$("bminus").addEventListener("click", () => bkLoad(-1));
-$("bplus").addEventListener("click", () => bkLoad(1));
-["bprod", "barea"].forEach(id => $(id).addEventListener("change", () => bkRun != null && bkLoad(0)));
-// ---- end bodenkarten ----
+const viewers = [
+  chartViewer("b", "", (n, suf) => $("bprod").value + $("barea").value + "lv_000000_p_" + pad3(n) + "_" + suf + ".png", ["bprod", "barea"]),
+  chartViewer("w", "wt", (n, suf) => "nb_icon_wt_" + $("warea").value + $("wlev").value + "_p_" + pad3(n) + "_" + suf + ".png", ["wlev", "warea"])
+];
+// ---- end karten ----
 
 $("f").addEventListener("submit", load);
 $("prt").addEventListener("click", () => window.print());
