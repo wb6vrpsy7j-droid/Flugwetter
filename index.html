@@ -56,6 +56,9 @@ pre{margin:4px 0;white-space:pre-wrap;word-break:break-word;font:inherit;font-si
 .wind svg{flex:none;width:112px;height:112px}
 .wind div{line-height:1.4}
 .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.tabs button{display:flex;flex-direction:column;align-items:center;line-height:1.25;padding:8px 14px}
+.tabs button small{font-weight:400;color:var(--mute);font-size:.8rem}
+.tabs button.sel{box-shadow:0 0 0 3px var(--blue)}
 #gimg{width:100%;height:auto;display:block;margin-top:8px;border:1px solid var(--rule);background:#fff}
 #gimg[hidden]{display:none}
 .note{font-size:.85rem;max-width:70ch;margin-top:16px}
@@ -101,7 +104,7 @@ pre{margin:4px 0;white-space:pre-wrap;word-break:break-word;font:inherit;font-si
 </section>
 <div id="cards"></div>
 
-<p class="note">Quellen: Open-Meteo.com (Prognose, CC BY 4.0), Deutscher Wetterdienst über Bright Sky (Warnungen), NOAA Aviation Weather Center (METAR/TAF). Die Wolkenbasis ist eine Schätzung aus der Differenz von Temperatur und Taupunkt und gilt vor allem für Quellwolken. Die GAFOR-Einschätzung ist eine eigene Schätzung aus den Prognosewerten (Sicht und geschätzte Wolkenbasis) nach den Kategorien des DWD und nicht das amtliche GAFOR; das amtliche GAFOR (Grafik) stammt vom DWD und wird mit deinem eigenen Zugang geladen. Die App ersetzt keine amtliche Flugwetterberatung. (App-Version 8)</p>
+<p class="note">Quellen: Open-Meteo.com (Prognose, CC BY 4.0), Deutscher Wetterdienst über Bright Sky (Warnungen), NOAA Aviation Weather Center (METAR/TAF). Die Wolkenbasis ist eine Schätzung aus der Differenz von Temperatur und Taupunkt und gilt vor allem für Quellwolken. Die GAFOR-Einschätzung ist eine eigene Schätzung aus den Prognosewerten (Sicht und geschätzte Wolkenbasis) nach den Kategorien des DWD und nicht das amtliche GAFOR; das amtliche GAFOR (Grafik) stammt vom DWD und wird mit deinem eigenen Zugang geladen. Die App ersetzt keine amtliche Flugwetterberatung. (App-Version 9)</p>
 </main>
 
 <script>
@@ -460,8 +463,48 @@ async function load(ev) {
   $("ph").textContent = "Flugwetter: " + toks.join(" → ") + ". Prognose für " + when + " Ortszeit.";
   $("prt").hidden = false;
   $("gaf").hidden = false;
+  updateGaf();
   $("go").disabled = false;
 }
+// ---- gafor-zeiten ----
+// GAFOR: Ausgaberaster (UTC), Gültigkeit 6 Stunden ab einer Stunde nach der Ausgabe, drei Perioden zu je 2 Stunden
+const hhIn = (ms, tz) => new Intl.DateTimeFormat("de-DE", { timeZone: tz, hour: "2-digit", hourCycle: "h23" }).formatToParts(ms).find(p => p.type === "hour").value;
+const berlinOffset = ms => (+hhIn(ms, "Europe/Berlin") - +hhIn(ms, "UTC") + 24) % 24;
+function gafIssue(now) {
+  const hours = berlinOffset(now) === 2 ? [2, 5, 8, 11, 14] : [5, 8, 11];
+  const d = new Date(now);
+  for (let k = 0; k >= -1; k--) {
+    const base = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + k);
+    for (const h of [...hours].reverse()) if (base + h * 3600e3 <= now) return base + h * 3600e3;
+  }
+  return null;
+}
+function gafPeriods(issue) { return [0, 1, 2].map(i => { const s = issue + 3600e3 + i * 7200e3; return { s, e: s + 7200e3 }; }); }
+let gafLabels = [];
+function updateGaf(now = Date.now(), dep = new Date($("when").value).getTime()) {
+  const issue = gafIssue(now);
+  if (issue == null) return;
+  const per = gafPeriods(issue);
+  let hit = -1;
+  document.querySelectorAll("#gaf .tabs button").forEach((b, i) => {
+    const { s, e } = per[i];
+    gafLabels[i] = `${hhIn(s, "Europe/Berlin")}–${hhIn(e, "Europe/Berlin")} Uhr`;
+    b.textContent = "";
+    b.append(el("span", gafLabels[i]), el("small", `${hhIn(s, "UTC")}–${hhIn(e, "UTC")} UTC`));
+    const inside = dep >= s && dep < e;
+    b.classList.toggle("sel", inside);
+    if (inside) hit = i;
+  });
+  const g = $("gst"); g.className = "note";
+  const first = per[0].s, last = per[2].e;
+  g.textContent = (now >= last
+    ? `Die letzte planmäßige Ausgabe (${hhIn(issue, "UTC")} UTC) ist abgelaufen, die Karten zeigen vermutlich nicht mehr den aktuellen Stand. `
+    : `Ausgabe ${hhIn(issue, "UTC")} UTC, gültig ${hhIn(first, "UTC")}–${hhIn(last, "UTC")} UTC. `
+      + (hit >= 0 ? "Der Zeitraum deiner Abflugzeit ist markiert. " : "Deine Abflugzeit liegt außerhalb dieser Ausgabe. "))
+    + "Die Zeiten sind nach dem Ausgaberaster berechnet, Sonderausgaben sind möglich. Maßgeblich ist die Zeit in der Grafik.";
+}
+// ---- end gafor-zeiten ----
+
 let gUrl = null;
 async function loadGafor(n) {
   const out = $("gst"), base = proxyBase(), key = $("gkey").value.trim();
@@ -477,7 +520,7 @@ async function loadGafor(n) {
     if (gUrl) URL.revokeObjectURL(gUrl);
     gUrl = URL.createObjectURL(b);
     $("gimg").src = gUrl; $("gimg").hidden = false;
-    out.textContent = "Karte " + (+n + 1) + " von 3. Die Gültigkeitszeit steht in der Grafik.";
+    out.textContent = "Karte " + (+n + 1) + " von 3" + (gafLabels[n] ? ", " + gafLabels[n] : "") + ". Maßgeblich ist die Zeit in der Grafik.";
   } catch (e) { fail(e.message === "Failed to fetch" ? "Keine Verbindung zum Proxy. Ist der Worker mit dem neuen Code veröffentlicht?" : e.message); }
 }
 document.querySelectorAll("#gaf .tabs button").forEach(b => b.addEventListener("click", () => loadGafor(b.dataset.n)));
