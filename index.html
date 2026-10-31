@@ -10,8 +10,8 @@
 <link rel="manifest" href="manifest.webmanifest">
 <title>Flugwetter</title>
 <style>
-:root{color-scheme:light dark;--fl:"Calibri Light",Calibri,-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI Light","Segoe UI",system-ui,sans-serif;--bg:#e9eff3;--paper:#fbfcfc;--ink:#0e2a3b;--mute:#586d7a;--rule:#c5d2da;--blue:#1456c8;--warn:#f2b705;--err:#b3261e}
-@media (prefers-color-scheme:dark){:root{--bg:#0b1a24;--paper:#12252f;--ink:#e6eef3;--mute:#93a8b4;--rule:#26404e;--blue:#6a9bff;--err:#ff8a80}}
+:root{color-scheme:light dark;--fl:"Calibri Light",Calibri,-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI Light","Segoe UI",system-ui,sans-serif;--bg:#e9eff3;--paper:#fbfcfc;--ink:#0e2a3b;--mute:#586d7a;--rule:#c5d2da;--blue:#1456c8;--warn:#f2b705;--ok:#2e8b3d;--err:#b3261e}
+@media (prefers-color-scheme:dark){:root{--bg:#0b1a24;--paper:#12252f;--ink:#e6eef3;--mute:#93a8b4;--rule:#26404e;--blue:#6a9bff;--ok:#4cc16a;--err:#ff8a80}}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--ink);font:400 17px/1.5 Calibri,-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",system-ui,sans-serif;padding:max(24px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(48px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
@@ -59,6 +59,11 @@ pre{margin:4px 0;white-space:pre-wrap;word-break:break-word;font:inherit;font-si
 .tabs button{display:flex;flex-direction:column;align-items:center;line-height:1.25;padding:8px 14px}
 .tabs button small{font-weight:400;color:var(--mute);font-size:.8rem}
 .tabs button.sel{box-shadow:0 0 0 3px var(--blue)}
+.tabs button[hidden]{display:none}
+.tabs .close{margin-left:auto;justify-content:center}
+.box{transition:border-color .5s}
+.box.done{border-left-color:var(--ok)}
+.box.done h2::after{content:" ✓";color:var(--ok)}
 #gimg,#bimg,#wimg{width:100%;height:auto;display:block;margin-top:8px;border:1px solid var(--rule);background:#fff}
 #gimg[hidden],#bimg[hidden],#wimg[hidden]{display:none}
 select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--rule);padding:8px;border-radius:2px;width:100%;min-width:0;min-height:44px}
@@ -99,6 +104,7 @@ select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:
     <button type="button" class="alt" data-n="0">Karte 1</button>
     <button type="button" class="alt" data-n="1">Karte 2</button>
     <button type="button" class="alt" data-n="2">Karte 3</button>
+    <button type="button" class="alt close" id="gclose" hidden>Schließen</button>
   </div>
   <p id="gst" class="note"></p>
   <img id="gimg" alt="Amtliche GAFOR-Karte des Deutschen Wetterdienstes" hidden>
@@ -118,6 +124,7 @@ select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:
     <button type="button" class="alt" id="bgo">Karte für Abflugzeit</button>
     <button type="button" class="alt" id="bminus">−1 h</button>
     <button type="button" class="alt" id="bplus">+1 h</button>
+    <button type="button" class="alt close" id="bclose" hidden>Schließen</button>
   </div>
   <p id="bst" class="note"></p>
   <img id="bimg" alt="Bodenkarte des Deutschen Wetterdienstes" hidden>
@@ -136,13 +143,14 @@ select{font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:
     <button type="button" class="alt" id="wgo">Karte für Abflugzeit</button>
     <button type="button" class="alt" id="wminus">−1 h</button>
     <button type="button" class="alt" id="wplus">+1 h</button>
+    <button type="button" class="alt close" id="wclose" hidden>Schließen</button>
   </div>
   <p id="wst" class="note"></p>
   <img id="wimg" alt="Wind- und Temperaturkarte des Deutschen Wetterdienstes" hidden>
 </section>
 <div id="cards"></div>
 
-<p class="note">Quellen: Open-Meteo.com (Prognose, CC BY 4.0), Deutscher Wetterdienst über Bright Sky (Warnungen), NOAA Aviation Weather Center (METAR/TAF). Die Wolkenbasis ist eine Schätzung aus der Differenz von Temperatur und Taupunkt und gilt vor allem für Quellwolken. Die GAFOR-Einschätzung ist eine eigene Schätzung aus den Prognosewerten (Sicht und geschätzte Wolkenbasis) nach den Kategorien des DWD und nicht das amtliche GAFOR; das amtliche GAFOR (Grafik) stammt vom DWD und wird mit deinem eigenen Zugang geladen. Die App ersetzt keine amtliche Flugwetterberatung. (App-Version 11)</p>
+<p class="note">Quellen: Open-Meteo.com (Prognose, CC BY 4.0), Deutscher Wetterdienst über Bright Sky (Warnungen), NOAA Aviation Weather Center (METAR/TAF). Die Wolkenbasis ist eine Schätzung aus der Differenz von Temperatur und Taupunkt und gilt vor allem für Quellwolken. Die GAFOR-Einschätzung ist eine eigene Schätzung aus den Prognosewerten (Sicht und geschätzte Wolkenbasis) nach den Kategorien des DWD und nicht das amtliche GAFOR; das amtliche GAFOR (Grafik) stammt vom DWD und wird mit deinem eigenen Zugang geladen. Die App ersetzt keine amtliche Flugwetterberatung. (App-Version 12)</p>
 </main>
 
 <script>
@@ -475,6 +483,7 @@ async function load(ev) {
   store.set("fw_route", $("route").value); store.set("fw_proxy", $("proxy").value); store.set("fw_gkey", $("gkey").value.trim());
   const t = new Date($("when").value); t.setMinutes(t.getMinutes() + 30, 0, 0);
   const iso = t.toISOString().slice(0, 13) + ":00";
+  closeCards();
   $("go").disabled = true; $("cards").textContent = ""; $("sum").hidden = true; $("prt").hidden = true; $("ph").textContent = "";
   status("Lade Wetter für " + toks.length + (toks.length > 1 ? " Orte …" : " Ort …"));
   const out = await Promise.all(toks.map(async s => {
@@ -525,7 +534,7 @@ function updateGaf(now = Date.now(), dep = new Date($("when").value).getTime()) 
   if (issue == null) return;
   const per = gafPeriods(issue);
   let hit = -1;
-  document.querySelectorAll("#gaf .tabs button").forEach((b, i) => {
+  document.querySelectorAll("#gaf .tabs button[data-n]").forEach((b, i) => {
     const { s, e } = per[i];
     gafLabels[i] = `${hhIn(s, "Europe/Berlin")}–${hhIn(e, "Europe/Berlin")} Uhr`;
     b.textContent = "";
@@ -547,7 +556,7 @@ function updateGaf(now = Date.now(), dep = new Date($("when").value).getTime()) 
 let gUrl = null;
 async function loadGafor(n) {
   const out = $("gst"), base = proxyBase(), key = $("gkey").value.trim();
-  const fail = m => { out.textContent = m; out.className = "note err"; $("gimg").hidden = true; };
+  const fail = m => { out.textContent = m; out.className = "note err"; $("gimg").hidden = true; $("gclose").hidden = true; };
   if (!base || !key) return fail("Bitte Proxy-Adresse und GAFOR-Schlüssel unter „METAR und TAF einschalten“ eintragen.");
   store.set("fw_gkey", key);
   out.textContent = "Lade Karte " + (+n + 1) + " …"; out.className = "note";
@@ -558,11 +567,11 @@ async function loadGafor(n) {
     if (!b.type.startsWith("image/")) throw new Error("Statt eines Bildes kam eine andere Antwort. Die Anmeldung bei flugwetter.de hat vermutlich nicht geklappt.");
     if (gUrl) URL.revokeObjectURL(gUrl);
     gUrl = URL.createObjectURL(b);
-    $("gimg").src = gUrl; $("gimg").hidden = false;
+    $("gimg").src = gUrl; $("gimg").hidden = false; $("gclose").hidden = false;
     out.textContent = "Karte " + (+n + 1) + " von 3" + (gafLabels[n] ? ", " + gafLabels[n] : "") + ". Maßgeblich ist die Zeit in der Grafik.";
   } catch (e) { fail(e.message === "Failed to fetch" ? "Keine Verbindung zum Proxy. Ist der Worker mit dem neuen Code veröffentlicht?" : e.message); }
 }
-document.querySelectorAll("#gaf .tabs button").forEach(b => b.addEventListener("click", () => loadGafor(b.dataset.n)));
+document.querySelectorAll("#gaf .tabs button[data-n]").forEach(b => b.addEventListener("click", () => loadGafor(b.dataset.n)));
 // ---- karten ----
 async function workerGet(path, key) { return fetch(new URL(proxyBase()).origin + path, { headers: { "X-App-Key": key } }); }
 const pad3 = n => String(n).padStart(3, "0");
@@ -572,7 +581,7 @@ function chartViewer(p, runKey, srcOf, selectIds) {
   const E = s => $(p + s);
   async function go(delta) {
     const out = E("st"), key = $("gkey").value.trim(), base = proxyBase();
-    const fail = m => { out.textContent = m; out.className = "note err"; E("img").hidden = true; };
+    const fail = m => { out.textContent = m; out.className = "note err"; E("img").hidden = true; E("close").hidden = true; };
     if (!base || !key) return fail("Bitte Proxy-Adresse und Schlüssel unter „METAR und TAF einschalten“ eintragen.");
     store.set("fw_gkey", key);
     out.textContent = "Lade Karte …"; out.className = "note";
@@ -595,7 +604,7 @@ function chartViewer(p, runKey, srcOf, selectIds) {
       if (!b.type.startsWith("image/")) throw new Error("Statt eines Bildes kam eine andere Antwort.");
       if (st.url) URL.revokeObjectURL(st.url);
       st.url = URL.createObjectURL(b);
-      E("img").src = st.url; E("img").hidden = false;
+      E("img").src = st.url; E("img").hidden = false; E("close").hidden = false;
       const v = st.run + st.step * 3600e3;
       const loc = new Date(v).toLocaleString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Berlin" });
       out.textContent = `Gültig ${loc} Uhr Ortszeit (${hhIn(v, "UTC")} UTC), Modelllauf ${hhIn(st.run, "UTC")} UTC, +${st.step} h.` + hint;
@@ -612,6 +621,28 @@ const viewers = [
   chartViewer("w", "wt", (n, suf) => "nb_icon_wt_" + $("warea").value + $("wlev").value + "_p_" + pad3(n) + "_" + suf + ".png", ["wlev", "warea"])
 ];
 // ---- end karten ----
+
+// ---- gelesen ----
+// Fenster (GAFOR, Bodenkarten, Wind/Temperatur) werden grün, wenn die Karte 10 Sekunden lang geöffnet war
+const watch = {
+  gaf: { img: "gimg", close: "gclose", n: 0 },
+  bk: { img: "bimg", close: "bclose", n: 0 },
+  wk: { img: "wimg", close: "wclose", n: 0 }
+};
+function tick() {
+  if (document.hidden) return;                       // Pause, solange die App nicht sichtbar ist
+  for (const sec of Object.keys(watch)) {
+    const w = watch[sec], box = $(sec);
+    if (box.hidden || $(w.img).hidden) { w.n = 0; continue; }   // geschlossen: Zähler zurück
+    if (box.classList.contains("done")) continue;
+    if (++w.n >= 10) box.classList.add("done");
+  }
+}
+function closeCard(sec) { const w = watch[sec]; $(w.img).hidden = true; $(w.close).hidden = true; w.n = 0; }
+function closeCards() { for (const sec of Object.keys(watch)) { closeCard(sec); $(sec).classList.remove("done"); } }
+Object.keys(watch).forEach(sec => $(watch[sec].close).addEventListener("click", () => closeCard(sec)));
+setInterval(tick, 1000);
+// ---- end gelesen ----
 
 $("f").addEventListener("submit", load);
 $("prt").addEventListener("click", () => window.print());
